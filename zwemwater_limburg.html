@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zwemwater Limburg</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ──────────────────────────────────── */
+    #sidebar {
+      width: 300px;
+      min-width: 300px;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 2px 0 10px rgba(0,0,0,.13);
+      z-index: 1000;
+      overflow-y: auto;
+    }
+
+    #sidebar-header {
+      background: #1a3a52;
+      color: #fff;
+      padding: 18px 20px 14px;
+      flex-shrink: 0;
+    }
+
+    #sidebar-header h1 { font-size: 17px; font-weight: 700; letter-spacing: .3px; }
+    #sidebar-header p  { font-size: 12px; opacity: .75; margin-top: 3px; }
+
+    #result-count {
+      font-size: 12px;
+      background: rgba(255,255,255,.15);
+      border-radius: 12px;
+      padding: 2px 10px;
+      display: inline-block;
+      margin-top: 8px;
+    }
+
+    .section {
+      padding: 13px 20px;
+      border-bottom: 1px solid #eef0f3;
+    }
+
+    .section-label {
+      font-size: 10.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .7px;
+      color: #6b7280;
+      margin-bottom: 9px;
+    }
+
+    /* ── Toggle switch ────────────────────────────── */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .toggle-label-text { font-size: 13px; color: #222; font-weight: 500; }
+    .toggle-sublabel   { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+
+    .switch { position: relative; width: 42px; height: 24px; flex-shrink: 0; }
+    .switch input { display: none; }
+
+    .slider {
+      position: absolute; inset: 0;
+      background: #d1d5db;
+      border-radius: 24px;
+      cursor: pointer;
+      transition: .2s;
+    }
+
+    .slider:before {
+      content: '';
+      position: absolute;
+      width: 18px; height: 18px;
+      left: 3px; bottom: 3px;
+      background: white;
+      border-radius: 50%;
+      box-shadow: 0 1px 3px rgba(0,0,0,.22);
+      transition: .2s;
+    }
+
+    input:checked + .slider               { background: #1a3a52; }
+    input:checked + .slider:before        { transform: translateX(18px); }
+
+    /* ── Chips ────────────────────────────────────── */
+    .chip-group { display: flex; flex-wrap: wrap; gap: 6px; }
+
+    .chip {
+      cursor: pointer;
+      padding: 4px 12px;
+      border-radius: 14px;
+      font-size: 12px;
+      font-weight: 500;
+      border: 1.5px solid #d1d5db;
+      background: #fff;
+      color: #555;
+      transition: all .13s;
+      user-select: none;
+    }
+
+    .chip:hover  { border-color: #1a3a52; color: #1a3a52; }
+    .chip.active { background: #1a3a52; border-color: #1a3a52; color: #fff; }
+
+    /* ── Legend ───────────────────────────────────── */
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin-bottom: 5px;
+      font-size: 12px;
+      color: #374151;
+    }
+
+    .l-dot     { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+    .l-divider { height: 6px; }
+    .l-line    { display: inline-block; width: 18px; height: 2px; background: #1a3a52; border-radius: 1px; flex-shrink: 0; opacity: 0.7; }
+
+    .color-tip {
+      font-size: 11px;
+      color: #6b7280;
+      background: #f9fafb;
+      border-left: 3px solid #1a3a52;
+      padding: 7px 10px;
+      border-radius: 0 4px 4px 0;
+      line-height: 1.55;
+      margin-top: 8px;
+    }
+
+    /* ── Reset ────────────────────────────────────── */
+    #reset-btn {
+      margin: 12px 20px 16px;
+      padding: 9px;
+      width: calc(100% - 40px);
+      background: #f3f4f6;
+      border: none;
+      border-radius: 7px;
+      font-size: 13px;
+      cursor: pointer;
+      color: #374151;
+      font-family: inherit;
+      font-weight: 500;
+      transition: background .13s;
+    }
+
+    #reset-btn:hover { background: #e5e7eb; }
+
+    /* ── Boundary loading spinner ─────────────────── */
+    #boundary-loader {
+      font-size: 11px;
+      color: #9ca3af;
+      padding: 4px 20px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .spinner {
+      width: 12px; height: 12px;
+      border: 2px solid #e5e7eb;
+      border-top-color: #9ca3af;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Map ──────────────────────────────────────── */
+    #map { flex: 1; height: 100vh; }
+
+    /* ── Region label on map ──────────────────────── */
+    .region-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: rgba(26, 58, 82, 0.45);
+      pointer-events: none;
+      white-space: nowrap;
+      text-shadow: 0 0 6px rgba(255,255,255,.9);
+    }
+
+    /* ── Popup ────────────────────────────────────── */
+    .popup-name {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: #1a3a52;
+      margin-bottom: 4px;
+      line-height: 1.35;
+    }
+
+    .popup-addr {
+      font-size: 11px;
+      color: #9ca3af;
+      margin-bottom: 9px;
+    }
+
+    .popup-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+
+    .ptag {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 500;
+    }
+
+    .ptag-pub  { background: #dbeafe; color: #1e40af; }
+    .ptag-priv { background: #ffedd5; color: #9a3412; }
+    .ptag-unk  { background: #f3f4f6; color: #6b7280; }
+    .ptag-ja   { background: #dcfce7; color: #166534; }
+    .ptag-nee  { background: #fee2e2; color: #991b1b; }
+    .ptag-reg  { background: #f3f4f6; color: #4b5563; }
+
+    .leaflet-popup-content { min-width: 220px; }
+    .gemeente-tooltip { font-size: 11px; }
+  </style>
+</head>
+
+<body>
+<div id="sidebar">
+
+  <div id="sidebar-header">
+    <h1>Zwemwater Limburg</h1>
+    <p>Provincie Limburg — zwembaden overzicht</p>
+    <div id="result-count">55 locaties</div>
+  </div>
+
+  <div id="boundary-loader">
+    <div class="spinner"></div>
+    <span>Grenzen laden…</span>
+  </div>
+
+  <!-- 5 km radius toggle -->
+  <div class="section">
+    <div class="section-label">Dekkingsgebied</div>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label-text">Toon 5 km radius</div>
+        <div class="toggle-sublabel">Bereikbaarheid per locatie</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="circle-toggle" />
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
+<!-- Filter: openbaar/privé -->
+  <div class="section">
+    <div class="section-label">Openbaar of Privé</div>
+    <div class="chip-group" id="filter-openbaar">
+      <span class="chip active" data-val="openbaar">Openbaar</span>
+      <span class="chip active" data-val="prive">Privé</span>
+    </div>
+  </div>
+
+  <!-- Filter: gemeente eigenaar -->
+  <div class="section">
+    <div class="section-label">Gemeente Eigenaar</div>
+    <div class="chip-group" id="filter-gemeente">
+      <span class="chip active" data-val="ja">Ja</span>
+      <span class="chip active" data-val="nee">Nee</span>
+    </div>
+  </div>
+
+  <!-- Filter: ABC zwemmen -->
+  <div class="section">
+    <div class="section-label">ABC Zwemmen</div>
+    <div class="chip-group" id="filter-abc">
+      <span class="chip active" data-val="ja">Ja</span>
+      <span class="chip active" data-val="nee">Nee</span>
+    </div>
+  </div>
+
+  <!-- Filter: senioren/gezondheid -->
+  <div class="section">
+    <div class="section-label">Senioren / Gezondheid</div>
+    <div class="chip-group" id="filter-senioren">
+      <span class="chip active" data-val="ja">Ja</span>
+      <span class="chip active" data-val="nee">Nee</span>
+    </div>
+  </div>
+
+  <!-- Filter: regio -->
+  <div class="section">
+    <div class="section-label">Regio</div>
+    <div class="chip-group" id="filter-regio">
+      <span class="chip active" data-val="midden">Midden</span>
+      <span class="chip active" data-val="noord">Noord</span>
+      <span class="chip active" data-val="zuid">Zuid</span>
+    </div>
+  </div>
+
+  <button id="reset-btn">↺ &nbsp;Filters resetten</button>
+</div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+<script>
+// ── DATA (55 locations with exact coordinates) ───────
+const DATA = [
+  // ── Midden Limburg ────────────────────────────────────────────────────────────
+  {name:"Zwembad In de Bandert",                              plaats:"Echt",           straat:"Bandertlaan",           huisnr:"7",     lat:51.1067843, lon:5.8865129, openbaar_of_prive:"openbaar", gemeente_eigenaar:"ja",  abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"midden"},
+  {name:"Zwembad LACO Haelen",                                plaats:"Haelen",         straat:"Roggelseweg",           huisnr:"50",    lat:51.2411119, lon:5.9447111, openbaar_of_prive:"openbaar", gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"midden"},
+  {name:"Zwembad LACO Heythuizen",                            plaats:"Heythuysen",     straat:"Arevenlaan",            huisnr:"3",     lat:51.2541747, lon:5.9029475, openbaar_of_prive:"openbaar", gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"midden"},
+  {name:"Zwembad 't Ligteveld",                               plaats:"Roggel en Neer", straat:"Ligteveld",             huisnr:"2",     lat:51.2743,    lon:5.9189,    openbaar_of_prive:"openbaar", gemeente_eigenaar:"ja",  abc_zwemmen:"nee", senioren_gezondheid:"ja",  regio:"midden"},
+  {name:"Zwemschool Multimove Heel",                          plaats:"Heel",           straat:"Rector Maenenstraat",   huisnr:"2",     lat:51.1786373, lon:5.8941256, openbaar_of_prive:"openbaar", gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"midden"},
+  {name:"Zwembad Weerderhof",                                 plaats:"Linne",          straat:"Oeveren",               huisnr:"19a",   lat:51.1568119, lon:5.931828,  openbaar_of_prive:"openbaar", gemeente_eigenaar:"ja",  abc_zwemmen:"nee", senioren_gezondheid:"ja",  regio:"midden"},
+  {name:"Zwembad Eurobad Maasbracht",                         plaats:"Maasbracht",     straat:"Europlein",             huisnr:"7",     lat:51.1463785, lon:5.8946873, openbaar_of_prive:"openbaar", gemeente_eigenaar:"ja",  abc_zwemmen:"nee", senioren_gezondheid:"ja",  regio:"midden"},
+  {name:"Zwembad LACO sportcentrum Nederweert",               plaats:"Nederweert",     straat:"Winnerstraat",          huisnr:"1",     lat:51.2885493, lon:5.7584063, openbaar_of_prive:"openbaar", gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"midden"},
+  {name:"Zwembad Feel fit center Roerdalen (sportfondsen)",   plaats:"Melick",         straat:"Apollolaan",            huisnr:"2",     lat:51.1617211, lon:6.0243913, openbaar_of_prive:"openbaar", gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"midden"},
+  {name:"Zwembad Goos Wellness (via zwemschool Zwemfan)",     plaats:"Posterholt",     straat:"Heinsbergerweg",        huisnr:"63",    lat:51.1143106, lon:6.0531641, openbaar_of_prive:"openbaar", gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"nee", regio:"midden"},
+  {name:"Zwembad Landal Landgoed Aerwinkel (via zwemschool)", plaats:"Posterholt",     straat:"Zwembadweg",            huisnr:"1",     lat:51.1202399, lon:6.0087401, openbaar_of_prive:"openbaar", gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"nee", regio:"midden"},
+  {name:"Zwembad De Roerdomp",                                plaats:"Roermond",       straat:"Achilleslaan",          huisnr:"2",     lat:51.1938803, lon:6.0096637, openbaar_of_prive:"openbaar", gemeente_eigenaar:"ja",  abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"midden"},
+  {name:"Zwembad PTC Limburg zwemschool Swim-co",             plaats:"Herten",         straat:"Maastrichterweg",       huisnr:"156",   lat:51.1738015, lon:5.9738625, openbaar_of_prive:"prive",    gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"nee", regio:"midden"},
+  {name:"Zwembad De IJzeren Man",                             plaats:"Weert",          straat:"Geurtsvenweg",          huisnr:"1",     lat:51.2424699, lon:5.6706943, openbaar_of_prive:"openbaar", gemeente_eigenaar:"ja",  abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"midden"},
+  {name:"Zwembad zwemschool Josefien Weert",                  plaats:"Weert",          straat:"Hendrik IV straat",     huisnr:"10",    lat:51.2568393, lon:5.7209242, openbaar_of_prive:"prive",    gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"nee", regio:"midden"},
+  // ── Noord Limburg ─────────────────────────────────────────────────────────────
+  {name:"Zwembad De Bercken",                                 plaats:"Reuver",         straat:"Bosdaellaan",           huisnr:"2",     lat:51.2890624, lon:6.0748518, openbaar_of_prive:"openbaar", gemeente_eigenaar:"ja",  abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"noord"},
+  {name:"Zwemclub ROB op locatie Landal Lommerbergen",        plaats:"Reuver",         straat:"Lommerbergen",          huisnr:"1",     lat:51.2816982, lon:6.0509486, openbaar_of_prive:"openbaar", gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"nee", regio:"noord"},
+  {name:"Zwembad sportcentrum Pica Mare (sportfondsen)",      plaats:"Gennep",         straat:"Picardie",              huisnr:"34",    lat:51.6992105, lon:5.9760485, openbaar_of_prive:"openbaar", gemeente_eigenaar:"ja",  abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"noord"},
+  {name:"Zwembad De Groes",                                   plaats:"Gennep",         straat:"Kleermakersgroes",      huisnr:"14",    lat:51.6953056, lon:5.9653551, openbaar_of_prive:"openbaar", gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"noord"},
+  {name:"Zwembad De Berkel",                                  plaats:"Horst",          straat:"Kranestraat",           huisnr:"14",    lat:51.449647,  lon:6.0510102, openbaar_of_prive:"openbaar", gemeente_eigenaar:"ja",  abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"noord"},
+  {name:"Zwembad Bosbad de Meander (zwemschool)",             plaats:"Meterik",        straat:"St. Maartensweg",       huisnr:"16",    lat:51.4669398, lon:6.0107469, openbaar_of_prive:"openbaar", gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"nee", regio:"noord"},
+  {name:"Zwembad De Schatberg (camping binnen- en buitenbad)",plaats:"Sevenum",        straat:"Midden Peelweg",        huisnr:"5",     lat:51.3865096, lon:5.9722825, openbaar_of_prive:"openbaar", gemeente_eigenaar:"ja",  abc_zwemmen:"nee", senioren_gezondheid:"ja",  regio:"noord"},
+  {name:"Beringerzand (recreatiepark)",                       plaats:"Helden",         straat:"Heide",                 huisnr:"5",     lat:51.3484771, lon:5.9604126, openbaar_of_prive:"openbaar", gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"nee", regio:"noord"},
+  {name:"Zwembad LACO Peel en Maas",                          plaats:"Panningen",      straat:"Wilhelminastraat",      huisnr:"42",    lat:51.3320773, lon:5.9809127, openbaar_of_prive:"openbaar", gemeente_eigenaar:"ja",  abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"noord"},
+  {name:"Zwembad Klein Vink (Landal)",                        plaats:"Arcen",          straat:"Klein Vink",            huisnr:"4",     lat:51.4946378, lon:6.1888125, openbaar_of_prive:"openbaar", gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"nee", regio:"noord"},
+  {name:"Zwembad De Wisselslag",                              plaats:"Venlo",          straat:"Drie Decembersingel",   huisnr:"52",    lat:51.3671475, lon:6.1372767, openbaar_of_prive:"openbaar", gemeente_eigenaar:"ja",  abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"noord"},
+  {name:"Zwembad Ezzy's Venlo",                               plaats:"Venlo",          straat:"Maashoflaan",           huisnr:"5b",    lat:51.3730498, lon:6.1181032, openbaar_of_prive:"openbaar", gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"nee", regio:"noord"},
+  {name:"Zwembad Onderwijsgroep Buitengewoon",                plaats:"Venlo",          straat:"Ulingshofweg",          huisnr:"26",    lat:51.3379703, lon:6.1870939, openbaar_of_prive:"openbaar", gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"noord"},
+  {name:"Zwembad Rodan Zwemschool",                           plaats:"Venlo",          straat:"Noorderpoort",          huisnr:"95",    lat:51.3940941, lon:6.1783767, openbaar_of_prive:"openbaar", gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"noord"},
+  {name:"Zwembad Feel Fit Center Venray",                     plaats:"Venray",         straat:"Kempweg",               huisnr:"70",    lat:51.5230372, lon:5.9654293, openbaar_of_prive:"openbaar", gemeente_eigenaar:"ja",  abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"noord"},
+  // ── Zuid Limburg ──────────────────────────────────────────────────────────────
+  {name:"Zwembad De Haamen",                                  plaats:"Beek",           straat:"De Haamen",             huisnr:"1",     lat:50.9451137, lon:5.8090675, openbaar_of_prive:"openbaar", gemeente_eigenaar:"ja",  abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"zuid"},
+  {name:"Zwembad Op de Berg",                                 plaats:"Schinveld",      straat:"Op de Berg",            huisnr:"1",     lat:50.9679392, lon:5.9825575, openbaar_of_prive:"openbaar", gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"zuid"},
+  {name:"Zwembad De Bronspot",                                plaats:"Brunssum",       straat:"Koutenveld",            huisnr:"1b",    lat:50.9483276, lon:5.9708854, openbaar_of_prive:"openbaar", gemeente_eigenaar:"ja",  abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"zuid"},
+  {name:"Zwembad Bijhoen Fitness & Wellness",                 plaats:"Brunssum",       straat:"Uranusstraat",          huisnr:"17",    lat:50.9351061, lon:5.9463395, openbaar_of_prive:"prive",    gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"zuid"},
+  {name:"Zwembad De Treffer",                                 plaats:"Eijsden-Margraten", straat:"Marathon",           huisnr:"6",     lat:50.7796914, lon:5.7055022, openbaar_of_prive:"openbaar", gemeente_eigenaar:"ja",  abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"zuid"},
+  {name:"Zwembad Mosaqua",                                    plaats:"Gulpen",         straat:"Landsraderweg",         huisnr:"11",    lat:50.8096409, lon:5.8901046, openbaar_of_prive:"openbaar", gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"zuid"},
+  {name:"Zwembad Mondriaan Heerlen",                          plaats:"Heerlen",        straat:"John F. Kennedylaan",   huisnr:"301",   lat:50.8671091, lon:5.9710906, openbaar_of_prive:"prive",    gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"nee", regio:"zuid"},
+  {name:"Zwembad Adelante Hoensbroek",                        plaats:"Hoensbroek",     straat:"Zandbergseweg",         huisnr:"111",   lat:50.9217695, lon:5.9126739, openbaar_of_prive:"prive",    gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"nee", regio:"zuid"},
+  {name:"Zwembad Hoensbroek (sportfondsen)",                  plaats:"Hoensbroek",     straat:"Gravin van Schönbornlaan", huisnr:"2", lat:50.9196735, lon:5.9341359, openbaar_of_prive:"openbaar", gemeente_eigenaar:"ja",  abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"zuid"},
+  {name:"Zwemschool Fitness Sijben",                          plaats:"Heerlen",        straat:"Einderstraat",          huisnr:"1",     lat:50.9281933, lon:5.9605047, openbaar_of_prive:"prive",    gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"nee", regio:"zuid"},
+  {name:"Vie Kerkrade sportcentrum (Optisport)",              plaats:"Kerkrade",       straat:"Wijngracht",            huisnr:"61",    lat:50.8662698, lon:6.0615683, openbaar_of_prive:"openbaar", gemeente_eigenaar:"ja",  abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"zuid"},
+  {name:"Zwemschool Spekholzerheide",                         plaats:"Kerkrade",       straat:"Willemstraat",          huisnr:"14",    lat:50.8577084, lon:6.024849,  openbaar_of_prive:"prive",    gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"nee", regio:"zuid"},
+  {name:"Zwembad In de Bende",                                plaats:"Landgraaf",      straat:"In de Bende",           huisnr:"1",     lat:50.9111737, lon:6.0348657, openbaar_of_prive:"openbaar", gemeente_eigenaar:"ja",  abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"zuid"},
+  {name:"Zwembad Geusseltbad (Easy swim)",                    plaats:"Maastricht",     straat:"Discusworp",            huisnr:"4",     lat:50.858586,  lon:5.7214231, openbaar_of_prive:"openbaar", gemeente_eigenaar:"ja",  abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"zuid"},
+  {name:"Zwembad Sportschool Club Pelikaan",                  plaats:"Maastricht",     straat:"Dousbergweg",           huisnr:"4",     lat:50.8559992, lon:5.6527443, openbaar_of_prive:"openbaar", gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"zuid"},
+  {name:"Zwemschool Senden met eigenbad",                     plaats:"Maastricht",     straat:"Sint Bernardusstraat",  huisnr:"5",     lat:50.8466971, lon:5.6942178, openbaar_of_prive:"openbaar", gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"nee", regio:"zuid"},
+  {name:"Zwembad Glanerbrook Geleen",                         plaats:"Geleen",         straat:"Kummenadestraat",       huisnr:"45",    lat:50.9664712, lon:5.8332106, openbaar_of_prive:"openbaar", gemeente_eigenaar:"ja",  abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"zuid"},
+  {name:"Zwembad De Nieuwe Hateboer",                         plaats:"Sittard",        straat:"Sportcentrumlaan",      huisnr:"9",     lat:51.0084647, lon:5.8804793, openbaar_of_prive:"openbaar", gemeente_eigenaar:"ja",  abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"zuid"},
+  {name:"Zwembad Het Anker",                                  plaats:"Buchten",        straat:"Ankersweg",             huisnr:"52",    lat:51.0438531, lon:5.8151097, openbaar_of_prive:"openbaar", gemeente_eigenaar:"ja",  abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"zuid"},
+  {name:"Zwembad van zwemschool Sanders",                     plaats:"Geleen",         straat:"Van Akenstraat",        huisnr:"9",     lat:50.9536963, lon:5.8218736, openbaar_of_prive:"openbaar", gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"nee", regio:"zuid"},
+  {name:"Zwembad van zwemschool Spetters/Silverstaete",       plaats:"Sittard",        straat:"Smithlaan",             huisnr:"91",    lat:51.0108451, lon:5.8526197, openbaar_of_prive:"openbaar", gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"nee", regio:"zuid"},
+  {name:"Zwembad Steinerbos",                                 plaats:"Stein",          straat:"Stadhouderslaan",       huisnr:"220",   lat:50.9690526, lon:5.7781324, openbaar_of_prive:"openbaar", gemeente_eigenaar:"ja",  abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"zuid"},
+  {name:"Zwemschool Auqarijntje",                             plaats:"Valkenburg",     straat:"Walramplein",           huisnr:"37",    lat:50.863403,  lon:5.8348133, openbaar_of_prive:"openbaar", gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"nee", regio:"zuid"},
+  {name:"Zwemschool Cauberg Plaza",                           plaats:"Berg en Terblijt", straat:"Rijksweg",            huisnr:"162a",  lat:50.857354,  lon:5.8070941, openbaar_of_prive:"openbaar", gemeente_eigenaar:"nee", abc_zwemmen:"ja",  senioren_gezondheid:"nee", regio:"zuid"},
+  {name:"Zwembad De Joffer",                                  plaats:"Voerendaal",     straat:"Goswijnstraat",         huisnr:"3",     lat:50.8818557, lon:5.9343233, openbaar_of_prive:"openbaar", gemeente_eigenaar:"ja",  abc_zwemmen:"ja",  senioren_gezondheid:"ja",  regio:"zuid"},
+];
+
+// ── Municipality → region ─────────────────────────────
+const GEMEENTE_REGION = {
+  // Noord Limburg (7)
+  'Bergen (L.)':'noord','Beesel':'noord','Gennep':'noord',
+  'Horst aan de Maas':'noord','Peel en Maas':'noord','Venlo':'noord','Venray':'noord',
+  // Midden Limburg (7)
+  'Echt-Susteren':'midden','Leudal':'midden','Maasgouw':'midden',
+  'Nederweert':'midden','Roerdalen':'midden','Roermond':'midden','Weert':'midden',
+  // Zuid Limburg (17)
+  'Beek':'zuid','Beekdaelen':'zuid','Brunssum':'zuid','Eijsden-Margraten':'zuid',
+  'Gulpen-Wittem':'zuid','Heerlen':'zuid','Kerkrade':'zuid','Landgraaf':'zuid',
+  'Maastricht':'zuid','Meerssen':'zuid','Simpelveld':'zuid','Sittard-Geleen':'zuid',
+  'Stein':'zuid','Vaals':'zuid','Valkenburg aan de Geul':'zuid','Voerendaal':'zuid'
+};
+
+// ── Border styles ─────────────────────────────────────
+const REGION_BORDER  = { color:'#1a3a52', weight:1.6, fillOpacity:0, opacity:0.6 };
+const PROVINCE_BORDER = { color:'#1a3a52', weight:2.4, fillOpacity:0, opacity:0.8 };
+
+// ── Map setup ─────────────────────────────────────────
+const map = L.map('map', { zoomControl: true }).setView([51.12, 5.97], 9);
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>',
+  subdomains: 'abcd', maxZoom: 19
+}).addTo(map);
+
+// ── Load boundaries from cartomap ─────────────────────
+const GEM_URL = 'https://cartomap.github.io/nl/wgs84/gemeente_2023.geojson';
+
+(async () => {
+  const loader = document.getElementById('boundary-loader');
+  loader.style.display = 'flex';
+  try {
+    const gemData = await fetch(GEM_URL).then(r => r.json());
+
+    // 1. Merge municipalities per region → one clean outline per region
+    const byRegion = { noord: [], midden: [], zuid: [] };
+    gemData.features
+      .filter(f => GEMEENTE_REGION[f.properties.statnaam])
+      .forEach(f => byRegion[GEMEENTE_REGION[f.properties.statnaam]].push(f));
+
+    const regionPolygons = {};
+    Object.entries(byRegion).forEach(([region, features]) => {
+      if (!features.length) return;
+      let merged = features[0];
+      for (let i = 1; i < features.length; i++) {
+        try { merged = turf.union(merged, features[i]); } catch(e) {}
+      }
+      regionPolygons[region] = merged;
+      L.geoJSON(merged, { style: REGION_BORDER }).addTo(map);
+    });
+
+    // 2. Province outer border = union of all three regions (same geometry, no mismatch)
+    let province = regionPolygons['noord'];
+    if (regionPolygons['midden']) province = turf.union(province, regionPolygons['midden']);
+    if (regionPolygons['zuid'])   province = turf.union(province, regionPolygons['zuid']);
+    L.geoJSON(province, { style: PROVINCE_BORDER }).addTo(map);
+
+    // 3. Region name labels at approximate centroids
+    [
+      { lat: 51.52,  lon: 6.02,  text: 'Noord Limburg'  },
+      { lat: 51.185, lon: 5.875, text: 'Midden Limburg' },
+      { lat: 50.875, lon: 5.86,  text: 'Zuid Limburg'   },
+    ].forEach(({ lat, lon, text }) => {
+      L.marker([lat, lon], {
+        icon: L.divIcon({
+          html: `<div class="region-label">${text}</div>`,
+          className: '',
+          iconSize: [140, 20],
+          iconAnchor: [70, 10]
+        }),
+        interactive: false,
+        zIndexOffset: -500
+      }).addTo(map);
+    });
+
+    loader.style.display = 'none';
+  } catch (err) {
+    console.warn('Boundary data not loaded:', err);
+    loader.innerHTML = '<span style="color:#ef4444">Grenzen niet beschikbaar</span>';
+    setTimeout(() => loader.style.display = 'none', 3000);
+  }
+})();
+
+// ── Marker colour (single blue) ───────────────────────
+const MARKER_COLOR = '#1565c0';
+const TYPE_COLOR = { ja: MARKER_COLOR, nee: MARKER_COLOR, onbekend: MARKER_COLOR };
+
+function makeIcon(type, dimmed) {
+  const c = TYPE_COLOR[type] || TYPE_COLOR.onbekend;
+  const op = dimmed ? 0.15 : 1;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="38" viewBox="0 0 28 38">
+    <defs>
+      <filter id="ds" x="-40%" y="-20%" width="180%" height="160%">
+        <feDropShadow dx="0" dy="1.5" stdDeviation="1.5"
+          flood-color="rgba(0,0,0,0.28)" flood-opacity="${dimmed ? 0 : 1}"/>
+      </filter>
+    </defs>
+    <path fill="${c}" fill-opacity="${op}" stroke="white" stroke-width="1.8" filter="url(#ds)"
+      d="M14 2C8.5 2 4 6.5 4 12c0 8 10 24 10 24s10-16 10-24C24 6.5 19.5 2 14 2z"/>
+    <circle cx="14" cy="12" r="4.5" fill="white" fill-opacity="${op}"/>
+  </svg>`;
+  return L.divIcon({ html: svg, className: '', iconSize: [28,38], iconAnchor: [14,38], popupAnchor: [0,-40] });
+}
+
+// ── Popup helpers ─────────────────────────────────────
+function pubTag(v) {
+  if (v==='openbaar') return `<span class="ptag ptag-pub">Openbaar</span>`;
+  if (v==='prive')    return `<span class="ptag ptag-priv">Privé</span>`;
+  return `<span class="ptag ptag-unk">Onbekend</span>`;
+}
+function yesnoTag(v, yes, no) {
+  if (v==='ja')  return `<span class="ptag ptag-ja">${yes}</span>`;
+  if (v==='nee') return `<span class="ptag ptag-nee">${no}</span>`;
+  return `<span class="ptag ptag-unk">Onbekend</span>`;
+}
+
+// ── Build markers + circles ───────────────────────────
+const poolItems = DATA.map(d => {
+  const m = L.marker([d.lat, d.lon], { icon: makeIcon(d.gemeente_eigenaar, false) });
+
+  const addrLine = d.straat
+    ? `${d.straat}${d.huisnr ? ' ' + d.huisnr : ''}, ${d.plaats}`
+    : d.plaats;
+
+  m.bindPopup(`
+    <div class="popup-name">${d.name}</div>
+    <div class="popup-addr">${addrLine}</div>
+    <div class="popup-tags">
+      ${pubTag(d.openbaar_of_prive)}
+      ${yesnoTag(d.gemeente_eigenaar, 'Gemeente eigenaar', 'Geen gemeente eigenaar')}
+      ${yesnoTag(d.abc_zwemmen, 'ABC-zwemmen', 'Geen ABC-zwemmen')}
+      ${yesnoTag(d.senioren_gezondheid, 'Senioren / gezondheid', 'Geen senioren / gezondheid')}
+      <span class="ptag ptag-reg">${d.regio.charAt(0).toUpperCase()+d.regio.slice(1)} Limburg</span>
+    </div>`, { maxWidth: 290 });
+
+  m.addTo(map);
+
+  const cc = TYPE_COLOR[d.gemeente_eigenaar] || TYPE_COLOR.onbekend;
+  const circle = L.circle([d.lat, d.lon], {
+    radius: 5000,
+    color: cc, fillColor: cc,
+    fillOpacity: 0.07,
+    weight: 1.5, opacity: 0.35,
+    interactive: false
+  });
+
+  return { marker: m, circle, data: d };
+});
+
+// ── Filter state ──────────────────────────────────────
+const filters = {
+  openbaar: new Set(['openbaar','prive']),
+  gemeente: new Set(['ja','nee']),
+  abc:      new Set(['ja','nee']),
+  senioren: new Set(['ja','nee']),
+  regio:    new Set(['midden','noord','zuid']),
+};
+let circlesOn = false;
+
+function matchesFilters(d) {
+  return filters.openbaar.has(d.openbaar_of_prive)
+      && filters.gemeente.has(d.gemeente_eigenaar)
+      && filters.abc.has(d.abc_zwemmen)
+      && filters.senioren.has(d.senioren_gezondheid)
+      && filters.regio.has(d.regio);
+}
+
+function applyFilters() {
+  let n = 0;
+  poolItems.forEach(({ marker, circle, data }) => {
+    const vis = matchesFilters(data);
+    marker.setIcon(makeIcon(data.gemeente_eigenaar, !vis));
+    marker.setZIndexOffset(vis ? 0 : -1000);
+    if (circlesOn && vis) { if (!map.hasLayer(circle)) circle.addTo(map); }
+    else                  { if (map.hasLayer(circle))  map.removeLayer(circle); }
+    if (vis) n++;
+  });
+  document.getElementById('result-count').textContent = `${n} van ${DATA.length} locaties`;
+}
+
+// ── Circle toggle ─────────────────────────────────────
+document.getElementById('circle-toggle').addEventListener('change', e => {
+  circlesOn = e.target.checked;
+  applyFilters();
+});
+
+// ── Chip toggles ──────────────────────────────────────
+function setupGroup(id, key) {
+  document.getElementById(id).addEventListener('click', e => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    const val = chip.dataset.val;
+    if (filters[key].has(val)) { filters[key].delete(val); chip.classList.remove('active'); }
+    else                       { filters[key].add(val);    chip.classList.add('active'); }
+    applyFilters();
+  });
+}
+
+setupGroup('filter-openbaar', 'openbaar');
+setupGroup('filter-gemeente', 'gemeente');
+setupGroup('filter-abc',      'abc');
+setupGroup('filter-senioren', 'senioren');
+setupGroup('filter-regio',    'regio');
+
+// ── Reset ──────────────────────────────────────────────
+document.getElementById('reset-btn').addEventListener('click', () => {
+  filters.openbaar = new Set(['openbaar','prive']);
+  filters.gemeente = new Set(['ja','nee']);
+  filters.abc      = new Set(['ja','nee']);
+  filters.senioren = new Set(['ja','nee']);
+  filters.regio    = new Set(['midden','noord','zuid']);
+  document.querySelectorAll('.chip').forEach(c => c.classList.add('active'));
+  document.getElementById('circle-toggle').checked = false;
+  circlesOn = false;
+  applyFilters();
+});
+</script>
+</body>
+</html>
